@@ -11,7 +11,8 @@ public class Registro
 	public Registro(int chave, String conteudo) {
 		this.chave = chave;
 		this.conteudo = conteudo;
-		prox = ant = -1;
+		prox = -1;
+		ant = -1;
 	}
 	
 	public Registro()	{ }
