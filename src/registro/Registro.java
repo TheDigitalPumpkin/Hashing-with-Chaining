@@ -25,21 +25,10 @@ public class Registro
 		return prox;
 	}
 
-	public void setProx(int prox) {
-		this.prox = prox;
-	}
-
 	public int getAnt() {
 		return ant;
 	}
 
-	public void setAnt(int ant) {
-		this.ant = ant;
-	}
-
-	public void setChave(int chave) {
-		this.chave = chave;
-	}
 
 	public int getChave() {
 		return chave;
@@ -48,8 +37,4 @@ public class Registro
 	public String getConteudo() {
 		return conteudo;
 	}
-
-	public void setConteudo(String conteudo) {
-		this.conteudo = conteudo;
-	}	
 }
