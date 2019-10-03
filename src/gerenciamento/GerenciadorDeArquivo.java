@@ -2,6 +2,7 @@ package gerenciamento;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.math.BigDecimal;
 
 import execucao.Main;
 import registro.Registro;
@@ -10,14 +11,12 @@ public class GerenciadorDeArquivo {
 	protected RandomAccessFile arq;
 	private final int TAMANHO_ARQUIVO = Main.TAMANHO_ARQUIVO;
 	private int cabecaListaVazia;
-	private int[] tabelaDeIndices = new int[TAMANHO_ARQUIVO];
+	private long[] tabelaDeIndices = new long[TAMANHO_ARQUIVO];
 	
 	public GerenciadorDeArquivo(File arq) {		
 		try {					
 			this.arq = new RandomAccessFile(arq, "rw");	
-			//Essa linha trunca o arquivo quando necessario, para propositos de debug.
-			//this.arq.setLength(0);
-			int inicializadorListaVazia;
+			int inicializadorListaVazia;	
 			
 			if(this.arq.length() > 0) {
 				for(int i = 0; i < TAMANHO_ARQUIVO * 32; i += 32) {
@@ -26,9 +25,17 @@ public class GerenciadorDeArquivo {
 					
 					if(inicializadorListaVazia == -1) {
 						cabecaListaVazia = i / 32;
-//						System.out.println("Cabeca comecou como " + cabecaListaVazia);
 						break;
 					} 
+				}
+				
+				for(int i = 0; i < TAMANHO_ARQUIVO * 32; i += 32) {
+					this.arq.seek(i);
+					int chaveLida = this.arq.readInt();
+					
+					if(chaveLida != -1) {
+						tabelaDeIndices[chaveLida % TAMANHO_ARQUIVO]++;
+					}
 				}
 			}
 			
@@ -103,7 +110,6 @@ public class GerenciadorDeArquivo {
 //					System.out.println("Entrou aqui");
 					arq.seek((hashRegistro * 32) + 28);
 					cabecaListaVazia = arq.readInt();
-					System.out.println("Cabeca: " + cabecaListaVazia);
 				}
 				//Primeiro, obtemos as posicoes vazias anteriores e proximas
 				arq.seek((hashRegistro * 32) + 24);
@@ -136,7 +142,7 @@ public class GerenciadorDeArquivo {
 						anterior = arq.getFilePointer() / 32;
 						arq.seek(arq.getFilePointer() + 28);
 						proximo = arq.readInt();
-						System.out.println("Proximo na cadeia: " + proximo);
+//						System.out.println("Proximo na cadeia: " + proximo);
 						
 						if(proximo == -1) {
 							break;
@@ -189,10 +195,10 @@ public class GerenciadorDeArquivo {
 					arq.writeInt(ponteiroAnteriorParaMover);
 					
 					//A variavel antigaCabecaListaVazia serve para retornarmos a posicao do registro movido para atualizarmos seus ponteiros.
-					int antigaCabecaListaVazia = cabecaListaVazia; // = 6
+					int antigaCabecaListaVazia = cabecaListaVazia; 
 					
 					//Esta variavel armazena a posicao para onde o registro sera movido.
-					int novaCabecaListaVazia = arq.readInt(); // = 7
+					int novaCabecaListaVazia = arq.readInt(); 
 					
 					arq.seek(arq.getFilePointer() - 4);					
 					arq.writeInt(ponteiroProxParaMover);
@@ -291,11 +297,7 @@ public class GerenciadorDeArquivo {
 			ex.printStackTrace();
 		}
 	}
-	
-	public int getCabeca() {
-		return cabecaListaVazia;
-	}
-	
+
 	public void removeChave(int chaveParaRemover) {
 		int hash = chaveParaRemover % TAMANHO_ARQUIVO;
 		int proximo = -2;
@@ -319,16 +321,74 @@ public class GerenciadorDeArquivo {
 					arq.seek(arq.getFilePointer() + 20);
 					int ponteiroAnterior = arq.readInt();
 					int proximoPonteiro = arq.readInt();
+//					System.out.println("Anterior = " + ponteiroAnterior + ", Proximo = " + proximoPonteiro);
 					arq.seek(arq.getFilePointer() - 32);
 					long posicaoAtual = arq.getFilePointer() / 32;
 					arq.writeInt(-1);
 					arq.writeBytes("                    ");
-					//Nas ultimas 2 linhas, sobrescrevi o registro com dados de um registro vazio,
-					//porem ainda falta escrever os ponteiros anterior e proximo, que devem apontar para posicoes vazias.
-					//Falta descobrir como inserir a nova posicao vazia de volta na lista de posicoes vazias. 
+									
+					arq.seek((cabecaListaVazia * 32) + 24);
+					
+					//Inserimos a nova posicao vazia na lista de posicoes vazias.
+					int antListaVazia = arq.readInt();
+					int proxListaVazia = arq.readInt();
+					arq.seek((posicaoAtual * 32) + 24);
+					arq.writeInt(antListaVazia);
+					arq.writeInt(proxListaVazia);
+					
+					if(posicaoAtual < cabecaListaVazia) {
+						arq.seek((cabecaListaVazia * 32) + 24);
+						arq.writeInt((int) posicaoAtual);
+						arq.seek((posicaoAtual * 32) + 28);
+						arq.writeInt(cabecaListaVazia);
+						cabecaListaVazia = (int) posicaoAtual;
+					}
+
+					if(ponteiroAnterior != -1 && proximoPonteiro != -1) {
+						arq.seek((ponteiroAnterior * 32) + 28);
+						arq.writeInt(proximoPonteiro);
+						arq.seek((proximoPonteiro * 32) + 24);
+						arq.writeInt(ponteiroAnterior);
+						return;
+					} else if(ponteiroAnterior != -1) {
+						arq.seek((ponteiroAnterior * 32) + 28);
+						arq.writeInt(-1);
+						arq.seek(posicaoAtual * 32); 
+						return;
+					} else if(proximoPonteiro != -1) {
+						//Como estamos removendo o primeiro elemento da lista, devemos arrastar o segundo elemento para a sua posicao
+						//No proximo bloco de codigo, estamos copiando o conteudo da segunda posicao para transferirmos mais tarde.
+						System.out.println("Removendo primeiro da lista.");
+						arq.seek(proximoPonteiro * 32);
+						int chaveParaMover = arq.readInt();
+						byte[] buffer = new byte[20];
+						arq.read(buffer);
+						String conteudoParaMover = new String(buffer);
+						arq.seek((proximoPonteiro * 32) + 28);
+						int proxPonteiroParaMover = arq.readInt();
+						
+						//Agora apagamos o proximo da cadeia da sua posicao e o movemos para a posicao do hash original
+						arq.seek(proximoPonteiro * 32);
+						arq.writeInt(-1);
+						arq.writeBytes("                    ");
+						arq.writeInt(antListaVazia);
+						arq.writeInt(proxListaVazia);
+						
+						arq.seek((proxPonteiroParaMover * 32) + 24);
+						arq.writeInt(hash);		
+						arq.seek((hash * 32));
+						arq.writeInt(chaveParaMover);
+						arq.writeBytes(conteudoParaMover);
+						arq.seek((hash * 32) + 24);
+						arq.writeInt(-1);
+						arq.writeInt(proxPonteiroParaMover);
+						return;
+					} else if(ponteiroAnterior == -1 && proximoPonteiro == -1) {
+						//Fazer remocao para quando lista so tem um elemento.
+					}
 				}
 				
-				arq.seek(arq.getFilePointer() + 20);
+				arq.seek(arq.getFilePointer() + 24);
 				proximo = arq.readInt();
 				arq.seek(proximo * 32);
 			}
@@ -340,8 +400,46 @@ public class GerenciadorDeArquivo {
 		}
 	}
 	
+	public double calculaMedia() {
+		long somatorio = 0;
+		double mediaDeAcessos;
+		
+		for(int i = 0; i < tabelaDeIndices.length; i++) {
+			if(tabelaDeIndices[i] > 0) {
+				somatorio += somatorio(tabelaDeIndices[i]);
+			}
+		}
+		
+		mediaDeAcessos = somatorio / TAMANHO_ARQUIVO;
+		
+		return BigDecimal.valueOf(mediaDeAcessos).setScale(1).doubleValue();
+	}
+
+	private long somatorio(long num) {
+		long soma = 0;
+		
+		if(num == 1) {
+			soma = 1;
+		} else {
+			for(long i = num; i >= 0; i--) {
+				soma += i;
+			}
+		}
+		
+		return soma;
+	}
+	
+	public void imprimeTabela() {
+		System.out.println("Tabela de indices: ");
+		
+		for(int i = 0; i < tabelaDeIndices.length; i++) {
+			System.out.print(tabelaDeIndices[i] + " ");
+		}
+	}
+	
 	public void imprimeArquivo() {
 		int apontador1, apontador2 = -2;
+		
 		for(long i = 0; i < TAMANHO_ARQUIVO * 32; i += 32) {
 			System.out.print((i / 32) + ": ");
 			try {
@@ -362,6 +460,7 @@ public class GerenciadorDeArquivo {
 					arq.read(buffer);
 					String s = new String(buffer);
 					s = s.toLowerCase();
+					s = s.replaceAll("\\s+", "");
 					System.out.print(s);
 					
 					arq.seek(i + 24);
@@ -387,17 +486,7 @@ public class GerenciadorDeArquivo {
 				ex.printStackTrace();
 			}
 		}
-	}
-	
-	private void escreveRegistroEmArquivo(Registro reg) {
-		try {
-			arq.writeInt(reg.getChave());
-			arq.writeBytes(reg.getConteudo());
-			arq.writeInt(reg.getAnt());
-			arq.writeInt(reg.getProx());
-		} catch (IOException e) {
-			System.out.println("Erro: funcao escreveRegistroEmArquivo");
-			e.printStackTrace();
-		}
+		
+		System.out.println("posicao inicial da lista de posicoes vazias: " + cabecaListaVazia);
 	}
 }
