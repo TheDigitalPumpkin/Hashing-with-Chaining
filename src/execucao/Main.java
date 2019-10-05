@@ -10,7 +10,7 @@ import registro.Registro;
 
 public class Main {
 	
-	public final static int TAMANHO_ARQUIVO = 11;
+	public final static int TAMANHO_ARQUIVO = 5;
 	
 	private static void realizarOperacoes(GerenciadorDeArquivo gerenciador) {
 		String input, conteudo;
