@@ -1,6 +1,8 @@
 package execucao;
 
 import java.io.File;
+import java.math.BigDecimal;
+import java.text.DecimalFormat;
 import java.util.Scanner;
 
 import gerenciamento.GerenciadorDeArquivo;
@@ -8,7 +10,7 @@ import registro.Registro;
 
 public class Main {
 	
-	public static int TAMANHO_ARQUIVO = 11;
+	public final static int TAMANHO_ARQUIVO = 11;
 	
 	private static void realizarOperacoes(GerenciadorDeArquivo gerenciador) {
 		String input, conteudo;
@@ -57,9 +59,9 @@ public class Main {
 		scanChave.close();
 	}
 
-	public static void main(String[] args) {			
+	public static void main(String[] args) {		
 		File f = new File("arquivo.dat");	
 		GerenciadorDeArquivo gerenciador = new GerenciadorDeArquivo(f);
-		realizarOperacoes(gerenciador);
+		realizarOperacoes(gerenciador);		
 	}
 }

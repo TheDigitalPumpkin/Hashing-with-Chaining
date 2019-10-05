@@ -3,6 +3,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.math.BigDecimal;
+import java.text.DecimalFormat;
 
 import execucao.Main;
 import registro.Registro;
@@ -12,6 +13,7 @@ public class GerenciadorDeArquivo {
 	private final int TAMANHO_ARQUIVO = Main.TAMANHO_ARQUIVO;
 	private int cabecaListaVazia;
 	private long[] tabelaDeIndices = new long[TAMANHO_ARQUIVO];
+	private long qtdDeChaves;
 	
 	public GerenciadorDeArquivo(File arq) {		
 		try {					
@@ -35,6 +37,7 @@ public class GerenciadorDeArquivo {
 					
 					if(chaveLida != -1) {
 						tabelaDeIndices[chaveLida % TAMANHO_ARQUIVO]++;
+						qtdDeChaves++;
 					}
 				}
 			}
@@ -88,7 +91,6 @@ public class GerenciadorDeArquivo {
 				while(true) {
 					arq.seek(arq.getFilePointer() + 28);
 					proximo = arq.readInt();
-//					System.out.println("Proximo = " + proximo);
 					
 					if(proximo == -1) {
 						break;
@@ -107,7 +109,6 @@ public class GerenciadorDeArquivo {
 			//Caso primeiro hash for vazio.
 			if(chave == -1) {
 				if(hashRegistro == cabecaListaVazia) {
-//					System.out.println("Entrou aqui");
 					arq.seek((hashRegistro * 32) + 28);
 					cabecaListaVazia = arq.readInt();
 				}
@@ -123,11 +124,18 @@ public class GerenciadorDeArquivo {
 				arq.writeInt(reg.getAnt());
 				arq.writeInt(reg.getProx());
 				//Agora atualizamos as posicoes vazias
-				arq.seek((anterior * 32) + 28);
-				arq.writeInt((int) proximo);
+				if(anterior != hashRegistro) {
+					arq.seek((anterior * 32) + 28);							
+					arq.writeInt((int) proximo);
+				}
 				
-				arq.seek((proximo * 32) + 24);
-				arq.writeInt((int) anterior);
+				arq.seek(proximo * 32);
+				
+				if(arq.readInt() == -1) {
+					arq.seek(arq.getFilePointer() + 20);
+					arq.writeInt((int) anterior);
+				}
+			
 				tabelaDeIndices[hashRegistro]++;
 			}
 			
@@ -135,14 +143,12 @@ public class GerenciadorDeArquivo {
 			else {		
 				//Se a chave tiver mesmo hash
 				if((chave % TAMANHO_ARQUIVO) == hashRegistro) {
-//					System.out.println("Mesmo hash");
 					arq.seek(hashRegistro * 32);
 					
 					while (true) {
 						anterior = arq.getFilePointer() / 32;
 						arq.seek(arq.getFilePointer() + 28);
 						proximo = arq.readInt();
-//						System.out.println("Proximo na cadeia: " + proximo);
 						
 						if(proximo == -1) {
 							break;
@@ -151,20 +157,15 @@ public class GerenciadorDeArquivo {
 						arq.seek(proximo * 32);
 					}
 						
-//					anterior = arq.getFilePointer() - 32;
-					System.out.println("Cabeca: " + cabecaListaVazia);
 					arq.seek(cabecaListaVazia * 32);
 					arq.writeInt(reg.getChave());
 					arq.writeBytes(reg.getConteudo());
 					arq.seek((cabecaListaVazia * 32) + 24);
 					arq.writeInt((int) anterior);
 					int novaCabeca = arq.readInt();
-//					System.out.println("Nova cabeca: " + novaCabeca);
 					arq.seek(arq.getFilePointer() - 4);
 					arq.writeInt(-1);
-//					System.out.println("Anterior = " + anterior);
 					arq.seek((anterior * 32) + 28);
-//					System.out.println("Vai escrever prox = " + cabecaListaVazia + " no ponteiro " + arq.getFilePointer());
 					arq.writeInt(cabecaListaVazia);		
 					cabecaListaVazia = novaCabeca;
 					tabelaDeIndices[hashRegistro]++;
@@ -239,6 +240,11 @@ public class GerenciadorDeArquivo {
 		int hash = chave % TAMANHO_ARQUIVO;
 		byte[] buffer = new byte[20];
 		
+		if(tabelaDeIndices[hash] == 0) {
+			System.out.println("chave nao encontrada: " + chave);
+			return;
+		}
+		
 		try {
 			arq.seek(hash * 32);
 			
@@ -302,10 +308,15 @@ public class GerenciadorDeArquivo {
 		int hash = chaveParaRemover % TAMANHO_ARQUIVO;
 		int proximo = -2;
 		
+		if(tabelaDeIndices[hash] == 0) {
+			System.out.println("chave nao encontrada: " + chaveParaRemover);
+			return;
+		}
+		
 		try {
 			arq.seek(hash * 32);
 			
-			while(proximo != -1) {
+			while(true) {
 				int chave = arq.readInt();
 				
 			//Para removermos uma determinada chave, supondo que a mesma esteja no arquivo
@@ -321,7 +332,6 @@ public class GerenciadorDeArquivo {
 					arq.seek(arq.getFilePointer() + 20);
 					int ponteiroAnterior = arq.readInt();
 					int proximoPonteiro = arq.readInt();
-//					System.out.println("Anterior = " + ponteiroAnterior + ", Proximo = " + proximoPonteiro);
 					arq.seek(arq.getFilePointer() - 32);
 					long posicaoAtual = arq.getFilePointer() / 32;
 					arq.writeInt(-1);
@@ -358,7 +368,6 @@ public class GerenciadorDeArquivo {
 					} else if(proximoPonteiro != -1) {
 						//Como estamos removendo o primeiro elemento da lista, devemos arrastar o segundo elemento para a sua posicao
 						//No proximo bloco de codigo, estamos copiando o conteudo da segunda posicao para transferirmos mais tarde.
-						System.out.println("Removendo primeiro da lista.");
 						arq.seek(proximoPonteiro * 32);
 						int chaveParaMover = arq.readInt();
 						byte[] buffer = new byte[20];
@@ -383,13 +392,16 @@ public class GerenciadorDeArquivo {
 						arq.writeInt(-1);
 						arq.writeInt(proxPonteiroParaMover);
 						return;
-					} else if(ponteiroAnterior == -1 && proximoPonteiro == -1) {
-						//Fazer remocao para quando lista so tem um elemento.
 					}
 				}
 				
 				arq.seek(arq.getFilePointer() + 24);
 				proximo = arq.readInt();
+				
+				if(proximo == -1) {
+					break;
+				}
+				
 				arq.seek(proximo * 32);
 			}
 			
@@ -399,9 +411,10 @@ public class GerenciadorDeArquivo {
 			ex.printStackTrace();
 		}
 	}
-	
-	public double calculaMedia() {
-		long somatorio = 0;
+	//Para propositos de formatacao, estou retornando a media de acessos como uma string.
+	public String calculaMedia() {
+		DecimalFormat formatador = new DecimalFormat("#.#");
+		double somatorio = 0;
 		double mediaDeAcessos;
 		
 		for(int i = 0; i < tabelaDeIndices.length; i++) {
@@ -410,9 +423,9 @@ public class GerenciadorDeArquivo {
 			}
 		}
 		
-		mediaDeAcessos = somatorio / TAMANHO_ARQUIVO;
+		mediaDeAcessos = somatorio / qtdDeChaves;
 		
-		return BigDecimal.valueOf(mediaDeAcessos).setScale(1).doubleValue();
+		return formatador.format(mediaDeAcessos);
 	}
 
 	private long somatorio(long num) {
