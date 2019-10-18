@@ -1,10 +1,7 @@
 package execucao;
 
 import java.io.File;
-import java.math.BigDecimal;
-import java.text.DecimalFormat;
 import java.util.Scanner;
-
 import gerenciamento.GerenciadorDeArquivo;
 import registro.Registro;
 
